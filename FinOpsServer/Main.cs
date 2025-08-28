@@ -1,3 +1,4 @@
+using System.Text.Json;
 using FinTrans.Domain;
 using FinTrans.Features;
 using FinTrans.Infra;
@@ -5,6 +6,7 @@ using Microsoft.Extensions.Caching.Memory;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Register services
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<SlidingWindowRateLimiter>(_ =>
     new(maxRequests: 100, window: TimeSpan.FromMinutes(1))); // per API key
@@ -17,20 +19,29 @@ builder.Services.AddSingleton<SagaOrchestrator>();
 
 var app = builder.Build();
 
-// Hash map / set for idempotency + dedupe (middleware)
-app.UseMiddleware<IdempotencyMiddleware>();            // Idempotency-Key support
-app.Use(async (ctx, next) =>                           // Sliding window rate limit
+// Simple test endpoint
+app.MapGet("/", () => "Hello World!");
+
+// Idempotency middleware (HashMap/Set)
+app.UseMiddleware<IdempotencyMiddleware>();
+
+// Sliding-window rate limiter
+app.Use(async (ctx, next) =>
 {
     var limiter = ctx.RequestServices.GetRequiredService<SlidingWindowRateLimiter>();
-    var key = ctx.Request.Headers["X-Api-Key"].ToString() ?? "anon";
+    var key = ctx.Request.Headers["X-Api-Key"].ToString();
+    if (string.IsNullOrWhiteSpace(key)) key = "anon";
+
     if (!limiter.Allow(key, DateTime.UtcNow))
     {
-        ctx.Response.StatusCode = 429; await ctx.Response.WriteAsync("rate limited");
+        ctx.Response.StatusCode = 429;
+        await ctx.Response.WriteAsync("rate limited");
         return;
     }
     await next();
 });
 
+// Feature endpoints
 PaymentsApi.Map(app);
 AnalyticsApi.Map(app);
 
