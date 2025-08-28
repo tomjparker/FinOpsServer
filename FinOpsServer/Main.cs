@@ -19,11 +19,7 @@ builder.Services.AddSingleton<SagaOrchestrator>();
 
 var app = builder.Build();
 
-// Simple test endpoint
-app.MapGet("/", () => "Hello World!");
-
-// Idempotency middleware (HashMap/Set)
-app.UseMiddleware<IdempotencyMiddleware>();
+var api = app.MapGroup("/v1");
 
 // Sliding-window rate limiter
 app.Use(async (ctx, next) =>
@@ -42,7 +38,19 @@ app.Use(async (ctx, next) =>
 });
 
 // Feature endpoints
-PaymentsApi.Map(app);
-AnalyticsApi.Map(app);
+app.UseMiddleware<IdempotencyMiddleware>(); // HashMap/set
+
+PaymentsApi.Map(api);
+AnalyticsApi.Map(api);
+
+// Simple test endpoint
+app.MapGet("/", () => "Hello World!");
+app.MapGet("/health", () => Results.Ok(new { ok = true }));
 
 app.Run();
+
+// idempotency behavior applies only to POST /v1/payments calls. That’s because the middleware is registered globally (app.UseMiddleware<IdempotencyMiddleware>()) 
+// but it self-filters on POST and Path.StartsWithSegments("/v1/payments"). When such a request includes an Idempotency-Key header, the middleware captures the 
+// response the first time and replays the exact same status/body on any repeat with the same key—so clients can safely retry without creating duplicate payments. 
+// Other routes (e.g., /, /health, anything not /v1/payments) aren’t idempotent under this scheme. If I later add /v2, either loosen the path check 
+// (e.g., just "/payments") or attach the middleware to each versioned group.
