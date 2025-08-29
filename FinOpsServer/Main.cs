@@ -1,7 +1,7 @@
 using System.Text.Json;
-using FinTrans.Domain;
-using FinTrans.Features;
-using FinTrans.Infra;
+using FinOpsServer.Domain;
+using FinOpsServer.Features;
+using FinOpsServer.Infra;
 using Microsoft.Extensions.Caching.Memory;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -36,7 +36,7 @@ app.Use(async (ctx, next) =>
 
     if (!limiter.Allow(key, DateTime.UtcNow))
     { ctx.Response.StatusCode = 429; await ctx.Response.WriteAsync("rate limited"); return; }
-    
+
     await next();
 });
 
