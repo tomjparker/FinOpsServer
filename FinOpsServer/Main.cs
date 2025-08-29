@@ -13,6 +13,7 @@ var builder = WebApplication.CreateBuilder(args);
 // Scoped: one per request. Good when the object holds request-specific state.
 // Transient: new every time. Fine for lightweight, stateless helpers.
 
+builder.Services.AddSingleton<IApiKeyValidator, StaticApiKeyValidator>();
 builder.Services.AddSingleton<SagaOrchestrator>(); // Runs with compensation stack for rollback
 builder.Services.AddSingleton(_ => new SlidingWindowRateLimiter(100, TimeSpan.FromMinutes(1))); // per API key - provides queues of timestamps - one limiter across all requests - lock(q) provides thread safety
 
@@ -27,12 +28,14 @@ var app = builder.Build();
 
 var api = app.MapGroup("/v1");
 
+api.UseMiddleware<ApiKeyMiddleware>();
+
 // Sliding-window rate limiter
 app.Use(async (ctx, next) =>
 {
     var limiter = ctx.RequestServices.GetRequiredService<SlidingWindowRateLimiter>();
     var key = ctx.Request.Headers["X-Api-Key"].ToString();
-    if (string.IsNullOrWhiteSpace(key)) key = "anon";
+    var key = (ctx.Items.TryGetValue("ApiKey", out var v) ? v?.ToString() : null) ?? "anon";
 
     if (!limiter.Allow(key, DateTime.UtcNow))
     { ctx.Response.StatusCode = 429; await ctx.Response.WriteAsync("rate limited"); return; }
