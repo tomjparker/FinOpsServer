@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Routing;
-using FinTrans.Infra;
+using FinOpsServer.Infra;
 
 namespace FinOpsServer.Features;
 
