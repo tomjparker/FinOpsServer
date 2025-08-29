@@ -1,10 +1,9 @@
-// Features/PaymentsApi.cs
 using System.Text.Json;
 using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Routing;
 using FinTrans.Infra;
 
-namespace FinTrans.Features;
+namespace FinOpsServer.Features;
 
 public static class PaymentsApi
 {
@@ -27,7 +26,7 @@ public static class PaymentsApi
             Payment? created = null;
 
             var ok = await saga.ExecuteAsync(
-                // step 1: create record
+                // Create the record first
                 async () => {
                     created = new Payment(
                         Id: Guid.NewGuid().ToString("n"),
@@ -40,12 +39,12 @@ public static class PaymentsApi
                     _store[created.Id] = created;
                     return (true, async () => { _store.TryRemove(created.Id, out _); await Task.CompletedTask; });
                 },
-                // step 2: reserve funds (pretend)
+                // Then reserve funds (mocked for now)
                 async () => {
-                    // if something fails: return (false, undo)
+                    // if failure: return (false, undo)
                     return (true, async () => { /* release funds */ await Task.CompletedTask; });
                 },
-                // step 3: post ledger (pretend)
+                // Post ledger check (pretend)
                 async () => {
                     return (true, async () => { /* unpost */ await Task.CompletedTask; });
                 }
