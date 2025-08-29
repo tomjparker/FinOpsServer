@@ -1,0 +1,44 @@
+# .NET build artifacts
+bin/
+obj/
+artifacts/
+*.user
+*.suo
+*.userprefs
+*.rsuser
+
+# VS / Rider / Code
+.vs/
+.idea/
+*.sln.iml
+.ReSharper*/
+*_Resharper.*
+.vscode/*           # optional; keep if you share settings
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
+
+# Logs, coverage, temp
+*.log
+logs/
+TestResults/
+coverage*/
+*.coverage
+*.coveragexml
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# NuGet (legacy layout); SDK uses global cache anyway
+packages/
+
+# Publish / deploy bundles (if you create them locally)
+publish/
+dist/
+
+# Node (if you add a frontend)
+node_modules/
+
+# Docker (optional)
+docker-data/

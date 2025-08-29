@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Http;
 
-namespace FinTrans.Infra;
+namespace FinOpsServer.Infra;
 
 public class IdempotencyMiddleware
 {
