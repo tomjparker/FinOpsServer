@@ -1,65 +1,63 @@
 // Features/PaymentsApi.cs
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Routing;
+using FinTrans.Infra;
 
 namespace FinTrans.Features;
 
 public static class PaymentsApi
 {
-    // thread-safe in-memory store (demo)
     private static readonly ConcurrentDictionary<string, Payment> _store = new();
 
-    // very simple Data Transfer Objects (DTOs) (could be moved to Domain/)
-    public record PaymentRequest(
-        string IdempotencyKey,
-        string From,
-        string To,
-        decimal Amount,
-        string Currency);
-
-    public record Payment(
-        string Id,
-        string From,
-        string To,
-        decimal Amount,
-        string Currency,
-        DateTimeOffset CreatedAt,
-        string Status);
+    public record PaymentRequest(string IdempotencyKey, string From, string To, decimal Amount, string Currency);
+    public record Payment(string Id, string From, string To, decimal Amount, string Currency, DateTimeOffset CreatedAt, string Status);
 
     public static void Map(IEndpointRouteBuilder routes)
     {
         var grp = routes.MapGroup("/payments");
 
-        grp.MapPost("/", async (HttpRequest req, CancellationToken ct) =>
+        grp.MapPost("/", async (HttpRequest req, SagaOrchestrator saga, CancellationToken ct) =>
         {
             var pr = await JsonSerializer.DeserializeAsync<PaymentRequest>(req.Body, cancellationToken: ct);
             if (pr is null) return Results.BadRequest(new { error = "invalid json" });
-
-            // tiny validation
-            if (string.IsNullOrWhiteSpace(pr.From) ||
-                string.IsNullOrWhiteSpace(pr.To) ||
-                pr.Amount <= 0 ||
-                string.IsNullOrWhiteSpace(pr.Currency))
-            {
+            if (string.IsNullOrWhiteSpace(pr.From) || string.IsNullOrWhiteSpace(pr.To) || pr.Amount <= 0 || string.IsNullOrWhiteSpace(pr.Currency))
                 return Results.BadRequest(new { error = "missing/invalid fields" });
-            }
 
-            var p = new Payment(
-                Id: Guid.NewGuid().ToString("n"),
-                From: pr.From.Trim(),
-                To: pr.To.Trim(),
-                Amount: pr.Amount,
-                Currency: pr.Currency.Trim().ToUpperInvariant(),
-                CreatedAt: DateTimeOffset.UtcNow,
-                Status: "created");
+            Payment? created = null;
 
-            _store[p.Id] = p;
-            return Results.Created($"/v1/payments/{p.Id}", p);
+            var ok = await saga.ExecuteAsync(
+                // step 1: create record
+                async () => {
+                    created = new Payment(
+                        Id: Guid.NewGuid().ToString("n"),
+                        From: pr.From.Trim(),
+                        To: pr.To.Trim(),
+                        Amount: pr.Amount,
+                        Currency: pr.Currency.Trim().ToUpperInvariant(),
+                        CreatedAt: DateTimeOffset.UtcNow,
+                        Status: "created");
+                    _store[created.Id] = created;
+                    return (true, async () => { _store.TryRemove(created.Id, out _); await Task.CompletedTask; });
+                },
+                // step 2: reserve funds (pretend)
+                async () => {
+                    // if something fails: return (false, undo)
+                    return (true, async () => { /* release funds */ await Task.CompletedTask; });
+                },
+                // step 3: post ledger (pretend)
+                async () => {
+                    return (true, async () => { /* unpost */ await Task.CompletedTask; });
+                }
+            );
+
+            if (!ok) return Results.StatusCode(500);
+
+            return Results.Created($"/v1/payments/{created!.Id}", created);
         });
 
         grp.MapGet("/{id}", (string id) =>
             _store.TryGetValue(id, out var p) ? Results.Ok(p) : Results.NotFound());
     }
 }
+
