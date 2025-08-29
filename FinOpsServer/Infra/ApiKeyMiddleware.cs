@@ -19,16 +19,14 @@ public sealed class ApiKeyMiddleware
 
     public async Task InvokeAsync(HttpContext ctx)
     {
-        if (!ctx.Request.Headers.TryGetValue("X-Api-Key", out var hv) ||
-            string.IsNullOrWhiteSpace(hv) ||
-            !_validator.IsValid(hv!))
-        {
-            ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
-            await ctx.Response.WriteAsync("missing/invalid api key");
-            return;
-        }
+        if (!ctx.Request.Path.StartsWithSegments("/v1")) { await _next(ctx); return; }
 
-        // make key available downstream (rate limiter, handlers)
+        if (!ctx.Request.Headers.TryGetValue("X-Api-Key", out var hv) || string.IsNullOrWhiteSpace(hv))
+        { ctx.Response.StatusCode = 401; await ctx.Response.WriteAsync("missing/invalid api key"); return; }
+
+        if (!_validator.IsValid(hv!))
+        { ctx.Response.StatusCode = 401; await ctx.Response.WriteAsync("missing/invalid api key"); return; }
+
         ctx.Items["ApiKey"] = hv.ToString();
         await _next(ctx);
     }

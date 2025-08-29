@@ -26,26 +26,31 @@ builder.Services.AddSingleton(_ => new SlidingWindowRateLimiter(100, TimeSpan.Fr
 
 var app = builder.Build();
 
-var api = app.MapGroup("/v1");
-
-api.UseMiddleware<ApiKeyMiddleware>();
+app.UseMiddleware<ApiKeyMiddleware>();
 
 // Sliding-window rate limiter
 app.Use(async (ctx, next) =>
 {
+    if (!ctx.Request.Path.StartsWithSegments("/v1")) { await next(); return; }
+
     var limiter = ctx.RequestServices.GetRequiredService<SlidingWindowRateLimiter>();
-    var key = ctx.Request.Headers["X-Api-Key"].ToString();
-    var key = (ctx.Items.TryGetValue("ApiKey", out var v) ? v?.ToString() : null) ?? "anon";
+    var apiKey = ctx.Items.TryGetValue("ApiKey", out var v)
+                   ? v?.ToString()
+                   : ctx.Request.Headers["X-Api-Key"].ToString();
+    if (string.IsNullOrWhiteSpace(apiKey)) apiKey = "anon";
 
-    if (!limiter.Allow(key, DateTime.UtcNow))
-    { ctx.Response.StatusCode = 429; await ctx.Response.WriteAsync("rate limited"); return; }
-
+    if (!limiter.Allow(apiKey, DateTime.UtcNow)) {
+        ctx.Response.StatusCode = 429;
+        await ctx.Response.WriteAsync("rate limited");
+        return;
+    }
     await next();
 });
 
 // Feature endpoints
 app.UseMiddleware<IdempotencyMiddleware>(); // HashMap/set
 
+var api = app.MapGroup("/v1");
 PaymentsApi.Map(api);
 AnalyticsApi.Map(api);
 
